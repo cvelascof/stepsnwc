@@ -1,6 +1,6 @@
 """Miscellaneous utility methods."""
 
-from numpy import dstack
+import numpy as np
 
 def read_input_files(inputfns, importer, **kwargs):
   """Read a list of input files using iotools and stack them into a 3d array.
@@ -19,4 +19,4 @@ def read_input_files(inputfns, importer, **kwargs):
     R_ = importer(ifn[0], **kwargs)[0]
     R.append(R_)
   
-  return dstack(R)
+  return np.concatenate([R_[None, :, :] for R_ in R])
