@@ -12,7 +12,7 @@ def simple_advection(R, V, num_timesteps, extrap_method, extrap_args={}):
     Two-dimensional array of shape (m,n) containing the input precipitation 
     field.
   V : array-like
-    Array of shape (m,n,2) containing the x- and y-components of the advection 
+    Array of shape (2,m,n) containing the x- and y-components of the advection 
     field. The velocities are assumed to represent one time step.
   num_timesteps : int
     Number of time steps to forecast.
@@ -31,7 +31,7 @@ def simple_advection(R, V, num_timesteps, extrap_method, extrap_args={}):
   """
   extrap_method = advection.get_method(extrap_method)
   
-  return extrap_method(R[:, :, -1], V, num_timesteps)
+  return extrap_method(R[-1, :, :], V, num_timesteps)
 
 def s_prog(R, V, num_timesteps, extrap_method):
   """Generate a nowcast by using the S-PROG method (Seed, 2003).
@@ -43,7 +43,7 @@ def s_prog(R, V, num_timesteps, extrap_method):
     precipitation fields ordered by timestamp from oldest to newest. The time 
     steps between the inputs are assumed to be regular.
   V : array-like
-    Array of shape (m,n,2) containing the x- and y-components of the advection 
+    Array of shape (2,m,n) containing the x- and y-components of the advection 
     field. The velocities are assumed to represent one time step between the 
     inputs.
   num_timesteps : int
@@ -74,7 +74,7 @@ def steps(R, V, num_timesteps, extrap_method, num_ens_members,
     precipitation fields ordered by timestamp from oldest to newest. The time 
     steps between the inputs are assumed to be regular.
   V : array-like
-    Array of shape (m,n,2) containing the x- and y-components of the advection 
+    Array of shape (2,m,n) containing the x- and y-components of the advection 
     field. The velocities are assumed to represent one time step between the 
     inputs.
   num_timesteps : int
