@@ -57,14 +57,14 @@ def decomposition_fft(X, filter, conditional=False, cond_thr=None):
         raise ValueError("the dimensions of the input field are %dx%d, but square shape expected" % \
                          (X.shape[0], X.shape[1]))
     if conditional and cond_thr is None:
-      raise Exception("conditional=True, but cond_thr was not supplied")
+        raise Exception("conditional=True, but cond_thr was not supplied")
     
     result = {}
     means  = []
     stds   = []
     
     if conditional:
-      MASK = X >= cond_thr
+        MASK = X >= cond_thr
     
     F = fft.fftshift(fft.fft2(X))
     X_decomp = []
@@ -74,7 +74,7 @@ def decomposition_fft(X, filter, conditional=False, cond_thr=None):
         X_decomp.append(X_)
         
         if conditional:
-          X_ = X_[MASK]
+            X_ = X_[MASK]
         means.append(np.mean(X_))
         stds.append(np.std(X_))
     
