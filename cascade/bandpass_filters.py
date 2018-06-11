@@ -1,12 +1,13 @@
 """Implementations of bandpass filters for separating different spatial scales 
-from two-dimensional images in the frequency domain.
+from two-dimensional images in the frequency domain. The input images are assumed 
+to have square shape.
 
 The methods in this module implement the following interface:
 
   filter_xxx(L, n, optional arguments)
 
-where L is the width and height of the input field, respectively, and n is the 
-number of frequency bands to use.
+where L is size of the input field, respectively, and n is the number of 
+frequency bands to use.
 
 The output of each filter function is a dictionary containing the following 
 key-value pairs:
@@ -79,6 +80,24 @@ def filter_gaussian(L, n, l_0=3, gauss_scale=0.2, gauss_scale_0=0.3):
   result["central_freqs"] = np.array(cfs)
   
   return result
+
+# TODO: Is this function needed? If yes, then implement it.
+def compute_2d_weights(w):
+  """Compute two-dimensional filter weights from those specified in one dimension.
+  
+  Parameters
+  ----------
+  w : array-like
+    Two-dimensional array of shape (n,L/2) containing one-dimensional weights 
+    for frequency bands k=1,2,...,n.
+  
+  Returns
+  -------
+  Three-dimensional array of shape (n,L,L) containing two-dimensional weights 
+  for frequency bands k=1,2,...,n. The weights are normalized so that for 
+  each Fourier wavenumber they sum to one.
+  """
+  pass
 
 def _gaussweights_1d(l, n, l_0=3, gauss_scale=0.2, gauss_scale_0=0.3):
   e = pow(0.5*l/l_0, 1.0/(n-2))
