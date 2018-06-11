@@ -15,8 +15,8 @@ def read_input_files(inputfns, importer, **kwargs):
     Optional keyword arguments for the importer.
   """
   R = []
-  for ifn in inputfns[::-1]:
-    R_ = importer(ifn[0], **kwargs)[0]
+  for ifn in inputfns[0][::-1]:
+    R_ = importer(ifn, **kwargs)[0]
     R.append(R_)
   
   return np.concatenate([R_[None, :, :] for R_ in R])
