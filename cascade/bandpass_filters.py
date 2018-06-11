@@ -1,6 +1,3 @@
-
-import numpy as np
-
 """Implementations of bandpass filters for separating different spatial scales 
 from two-dimensional images in the frequency domain.
 
@@ -14,9 +11,9 @@ number of frequency bands to use.
 The output of each filter function is a dictionary containing the following 
 key-value pairs:
 
-  filters_1d       2d array of shape (n, L/2) containing 1d filter weights 
+  weights_1d       2d array of shape (n, L/2) containing 1d filter weights 
                    for each frequency band k=1,2,...,n
-  filters_2d       3d array of shape (n, L, L) containing the 2d filter weights 
+  weights_2d       3d array of shape (n, L, L) containing the 2d filter weights 
                    for each frequency band k=1,2,...,n
   central_freqs    1d array of shape n containing the central frequencies of the 
                    filters
@@ -24,6 +21,8 @@ key-value pairs:
 The filter weights are assumed to be normalized so that for any Fourier 
 wavenumber they sum to one.
 """
+
+import numpy as np
 
 # TODO: Should the filter always return an 1d array and should we use a separate 
 # method for generating the 2d filter from the 1d filter?
@@ -53,22 +52,33 @@ def filter_gaussian(L, n, l_0=3, gauss_scale=0.2, gauss_scale_0=0.3):
     Optional scaling parameter for the Gaussian function corresponding to the 
     first frequency band.
   """
+  r = np.arange(L/2)
+  
   X,Y = np.ogrid[-L/2+1:L/2+1, -L/2+1:L/2+1]
   R = np.sqrt(X*X + Y*Y)
   
-  wfs = _gaussweights_1d(L, n, l_0=l_0, gauss_scale=gauss_scale, 
-                         gauss_scale_0=gauss_scale_0)
+  wfs,cfs = _gaussweights_1d(L, n, l_0=l_0, gauss_scale=gauss_scale, 
+                             gauss_scale_0=gauss_scale_0)
   
+  w = np.empty((n, L/2))
   W = np.empty((n, L, L))
   
   for i,wf in enumerate(wfs):
+    w[i, :] = wf(r)
     W[i, :, :] = wf(R)
   
+  w_sum = np.sum(w, axis=0)
   W_sum = np.sum(W, axis=0)
   for k in xrange(W.shape[0]):
+    w[k, :]    /= w_sum
     W[k, :, :] /= W_sum
   
-  return W
+  result = {}
+  result["weights_1d"]    = w
+  result["weights_2d"]    = W
+  result["central_freqs"] = np.array(cfs)
+  
+  return result
 
 def _gaussweights_1d(l, n, l_0=3, gauss_scale=0.2, gauss_scale_0=0.3):
   e = pow(0.5*l/l_0, 1.0/(n-2))
@@ -97,7 +107,8 @@ def _gaussweights_1d(l, n, l_0=3, gauss_scale=0.2, gauss_scale_0=0.3):
     def __call__(self, x):
       return f(log_e(x) - self.c, self.s)
   
-  weight_funcs = []
+  weight_funcs  = []
+  central_freqs = [0.0]
   
   s = gauss_scale * e
   weight_funcs.append(gaussfunc(0.0, gauss_scale_0 * e))
@@ -105,6 +116,7 @@ def _gaussweights_1d(l, n, l_0=3, gauss_scale=0.2, gauss_scale_0=0.3):
   for i,ri in enumerate(r):
     rc = log_e(ri[0])
     weight_funcs.append(gaussfunc(rc, s))
+    central_freqs.append(rc)
   
   gf = gaussfunc(log_e(l/2), s)
   def g(x):
@@ -115,5 +127,6 @@ def _gaussweights_1d(l, n, l_0=3, gauss_scale=0.2, gauss_scale_0=0.3):
     return res
   
   weight_funcs.append(g)
+  central_freqs.append(log_e(l/2))
   
-  return weight_funcs
+  return weight_funcs, central_freqs
