@@ -3,7 +3,7 @@ images into multiple spatial scales.
 
 The methods in this module implement the following interface:
 
-  decomposition_xxx(X, filter)
+  decomposition_xxx(X, filter, optional arguments)
 
 where X is the input field and filter is a dictionary returned by a filter 
 method implemented in bandpass_filters.py. X is required to have a square shape. 
@@ -24,7 +24,7 @@ try:
 except ImportError:
     from numpy import fft
 
-def decomposition_fft(X, filter):
+def decomposition_fft(X, filter, conditional=False, cond_thr=None):
     """Decompose a 2d input field into multiple spatial scales by using the Fast 
     Fourier Transform (FFT) and a bandpass filter.
     
@@ -35,6 +35,13 @@ def decomposition_fft(X, filter):
       the field must be equal.
     filter : dict
       A filter returned by any method implemented in bandpass_filters.py.
+    conditional : bool
+      If set to True, compute the statistics of each cascade level conditionally 
+      excluding the areas where the values are below the given threshold. This 
+      requires cond_thr to be set.
+    cond_thr : float
+      Threshold value for conditional computation of cascade statistics, see 
+      above.
     
     Returns
     -------
@@ -49,10 +56,15 @@ def decomposition_fft(X, filter):
     if X.shape[0] != X.shape[1]:
         raise ValueError("the dimensions of the input field are %dx%d, but square shape expected" % \
                          (X.shape[0], X.shape[1]))
+    if conditional and cond_thr is None:
+      raise Exception("conditional=True, but cond_thr was not supplied")
     
     result = {}
     means  = []
     stds   = []
+    
+    if conditional:
+      MASK = X >= cond_thr
     
     F = fft.fftshift(fft.fft2(X))
     X_decomp = []
@@ -60,6 +72,9 @@ def decomposition_fft(X, filter):
         W_k = filter["weights_2d"][k, :, :]
         X_ = np.real(fft.ifft2(fft.ifftshift(F*W_k)))
         X_decomp.append(X_)
+        
+        if conditional:
+          X_ = X_[MASK]
         means.append(np.mean(X_))
         stds.append(np.std(X_))
     
