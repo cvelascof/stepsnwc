@@ -45,7 +45,7 @@ def decomposition_fft(X, filter):
       field.
     """
     if len(X.shape) != 2:
-      raise ValueError("the input is not two-dimensional array")
+        raise ValueError("the input is not two-dimensional array")
     if X.shape[0] != X.shape[1]:
         raise ValueError("the dimensions of the input field are %dx%d, but square shape expected" % \
                          (X.shape[0], X.shape[1]))
@@ -57,11 +57,11 @@ def decomposition_fft(X, filter):
     F = fft.fftshift(fft.fft2(X))
     X_decomp = []
     for k in xrange(len(filter["weights_1d"])):
-      W_k = filter["weights_2d"][k, :, :]
-      X_ = np.real(fft.ifft2(fft.ifftshift(F*W_k)))
-      X_decomp.append(X_)
-      means.append(np.mean(X_))
-      stds.append(np.std(X_))
+        W_k = filter["weights_2d"][k, :, :]
+        X_ = np.real(fft.ifft2(fft.ifftshift(F*W_k)))
+        X_decomp.append(X_)
+        means.append(np.mean(X_))
+        stds.append(np.std(X_))
     
     result["cascade_levels"] = np.stack(X_decomp)
     result["means"] = means
