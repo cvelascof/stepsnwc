@@ -24,7 +24,7 @@ try:
 except ImportError:
     from numpy import fft
 
-def decomposition_fft(X, filter, conditional=False, cond_thr=None):
+def decomposition_fft(X, filter, MASK=None):
     """Decompose a 2d input field into multiple spatial scales by using the Fast 
     Fourier Transform (FFT) and a bandpass filter.
     
@@ -32,39 +32,33 @@ def decomposition_fft(X, filter, conditional=False, cond_thr=None):
     ----------
     X : array_like
       Two-dimensional array containing the input field. The width and height of 
-      the field must be equal.
+      X must be equal, and all values are required to be finite.
     filter : dict
       A filter returned by any method implemented in bandpass_filters.py.
-    conditional : bool
-      If set to True, compute the statistics of each cascade level conditionally 
-      excluding the areas where the values are below the given threshold. This 
-      requires cond_thr to be set.
-    cond_thr : float
-      Threshold value for conditional computation of cascade statistics, see 
-      above.
+    MASK : array_like
+      Optional mask to use for computing the statistics for the cascade levels. 
+      Pixels with MASK==False are excluded from the computations.
     
     Returns
     -------
     out : ndarray
-      Three-dimensional array of shape (n,L,L) containing the field decomposed 
-      into n spatial scales. The parameter n is determined upon initialization 
-      of the filter (see bandpass_filters.py), and L is the size of the input 
-      field.
+      A dictionary described in the module documentation. The parameter n is 
+      determined from the filter (see bandpass_filters.py).
     """
     if len(X.shape) != 2:
         raise ValueError("the input is not two-dimensional array")
     if X.shape[0] != X.shape[1]:
         raise ValueError("the dimensions of the input field are %dx%d, but square shape expected" % \
                          (X.shape[0], X.shape[1]))
-    if conditional and cond_thr is None:
-        raise Exception("conditional=True, but cond_thr was not supplied")
+    if MASK is not None and MASK.shape != X.shape:
+      raise ValueError("dimension mismatch between X and MASK: X.shape=%s, MASK.shape=%s" % \
+        (str(X.shape), str(MASK.shape)))
+    if np.any(~np.isfinite(X)):
+      raise ValueError("X contains non-finite values")
     
     result = {}
     means  = []
     stds   = []
-    
-    if conditional:
-        MASK = X >= cond_thr
     
     F = fft.fftshift(fft.fft2(X))
     X_decomp = []
@@ -73,7 +67,7 @@ def decomposition_fft(X, filter, conditional=False, cond_thr=None):
         X_ = np.real(fft.ifft2(fft.ifftshift(F*W_k)))
         X_decomp.append(X_)
         
-        if conditional:
+        if MASK is not None:
             X_ = X_[MASK]
         means.append(np.mean(X_))
         stds.append(np.std(X_))
