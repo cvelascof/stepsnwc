@@ -103,7 +103,7 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels,
         R_d.append(R_)
     
     # Normalize the cascades and rearrange them into a four-dimensional array of 
-    # shape (num_cascade_levels,2,L,L) for the AR(2) model.
+    # shape (num_cascade_levels,3,L,L) for the AR(2) model.
     R_c = []
     for i in xrange(num_cascade_levels):
         R_ = []
@@ -137,10 +137,17 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels,
     
     print(PHI)
     
-    # TODO: Implement the nowcast loop.
+    # Discard the first of the three cascades because it is not needed for the 
+    # AR(2) model.
+    R_c = R_c[:, 1:, :, :]
+    
+    # TODO: Implement the extrapolation.
     R_f = []
     for k in xrange(num_timesteps):
-      pass
+        # Iterate the AR(2) model for each cascade level.
+        for i in xrange(num_cascade_levels):
+            R_c[i, :, :, :] = autoregression.iterate_ar_model(R_c[i, :, :, :], 
+                                                              PHI[i, :])
     
     return R_f
 
