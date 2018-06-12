@@ -37,9 +37,9 @@ def simple_advection(R, V, num_timesteps, extrap_method, extrap_args={}):
     
     return extrap_method(R[-1, :, :], V, num_timesteps)
 
-def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, 
-    conditional=True, cond_thr=None, 
-    bandpass_filter_method=bandpass_filters.filter_gaussian, 
+# TODO: Write the documentation.
+def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr, 
+    conditional=True, bandpass_filter_method=bandpass_filters.filter_gaussian, 
     decomp_method=decomposition.decomposition_fft, 
     extrap_kwargs=None, filter_kwargs=None, decomposition_kwargs=None):
     """Generate a nowcast by using the S-PROG method (Seed, 2003).
@@ -76,6 +76,10 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels,
       Three-dimensional array of shape (num_timesteps,m,n) containing a time 
       series of nowcast precipitation fields.
     """
+    # TODO: Add checking of the inputs.
+    # TODO: This method does not use all input parameters. Remove hard-coded 
+    # values.
+    
     if np.any(~np.isfinite(R)):
         raise ValueError("R contains non-finite values")
     
@@ -89,7 +93,7 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels,
     R[1, :, :] = extrap_method(R[1, :, :], V, 1, outval="min")[0]
     
     if conditional:
-        MASK = np.logical_and.reduce([R[i, :, :] >= cond_thr for i in xrange(R.shape[0])])
+        MASK = np.logical_and.reduce([R[i, :, :] >= R_thr for i in xrange(R.shape[0])])
     else:
         MASK = None
     
@@ -104,13 +108,19 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels,
     
     # Normalize the cascades and rearrange them into a four-dimensional array of 
     # shape (num_cascade_levels,3,L,L) for the AR(2) model.
-    R_c = []
+    R_c   = []
+    mu    = np.empty(num_cascade_levels)
+    sigma = np.empty(num_cascade_levels)
+    
     for i in xrange(num_cascade_levels):
         R_ = []
         for j in xrange(3):
-            mu    = R_d[j]["means"][i]
-            sigma = R_d[j]["stds"][i]
-            R__ = (R_d[j]["cascade_levels"][i, :, :] - mu) / sigma
+            mu_    = R_d[j]["means"][i]
+            sigma_ = R_d[j]["stds"][i]
+            if j == 2:
+                mu[i]    = mu_
+                sigma[i] = sigma_
+            R__ = (R_d[j]["cascade_levels"][i, :, :] - mu_) / sigma_
             R_.append(R__)
         R_c.append(np.stack(R_))
     R_c = np.stack(R_c)
@@ -127,7 +137,7 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels,
     # Adjust the correlation coefficients to ensure that the AR(2) process 
     # is stationary.
     for i in xrange(num_cascade_levels):
-      GAMMA[i, 1] = autoregression.adjust_lag2_corrcoef(GAMMA[i, 0], GAMMA[i, 1])
+        GAMMA[i, 1] = autoregression.adjust_lag2_corrcoef(GAMMA[i, 0], GAMMA[i, 1])
     
     # Estimate the parameters of the AR(2) model from the autocorrelation 
     # coefficients.
@@ -141,13 +151,33 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels,
     # AR(2) model.
     R_c = R_c[:, 1:, :, :]
     
-    # TODO: Implement the extrapolation.
+    D = None
     R_f = []
-    for k in xrange(num_timesteps):
+    MASK_p = (R[-1, :, :] >= R_thr).astype(float) # precipitation mask
+    R_min = np.min(R)
+    
+    for t in xrange(num_timesteps):
         # Iterate the AR(2) model for each cascade level.
         for i in xrange(num_cascade_levels):
             R_c[i, :, :, :] = autoregression.iterate_ar_model(R_c[i, :, :, :], 
                                                               PHI[i, :])
+        
+        # Compute the recomposed precipitation field from the cascade obtained 
+        # from the AR(2) model.
+        R_r = [(R_c[i, -1, :, :] * sigma[i]) + mu[i] for i in xrange(num_cascade_levels)]
+        R_r = np.sum(np.stack(R_r), axis=0)
+        
+        # Advect the recomposed precipitation field to obtain the forecast for 
+        # time step t.
+        R_f_,D = advection.semilagrangian(R_r, V, 1, D_prev=D, return_displacement=True)
+        R_f_ = R_f_[0]
+        
+        # Advect the precipitation mask and apply it to the output.
+        # TODO: Make the precipitation mask optional.
+        #MASK_p_ = advection.semilagrangian(MASK_p, V, 1, D_prev=D)
+        #R_f_[MASK_p < 0.5] = R_min
+        
+        R_f.append(R_f_)
     
     return R_f
 
