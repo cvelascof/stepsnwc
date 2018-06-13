@@ -106,24 +106,9 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr,
         R_ = decomposition.decomposition_fft(R[i, :, :], filter, MASK=MASK)
         R_d.append(R_)
     
-    # Normalize the cascades and rearrange them into a four-dimensional array of 
-    # shape (num_cascade_levels,3,L,L) for the AR(2) model.
-    R_c   = []
-    mu    = np.empty(num_cascade_levels)
-    sigma = np.empty(num_cascade_levels)
-    
-    for i in xrange(num_cascade_levels):
-        R_ = []
-        for j in xrange(3):
-            mu_    = R_d[j]["means"][i]
-            sigma_ = R_d[j]["stds"][i]
-            if j == 2:
-                mu[i]    = mu_
-                sigma[i] = sigma_
-            R__ = (R_d[j]["cascade_levels"][i, :, :] - mu_) / sigma_
-            R_.append(R__)
-        R_c.append(np.stack(R_))
-    R_c = np.stack(R_c)
+    # Normalize the cascades and rearrange them into a four-dimensional array 
+    # of shape (num_cascade_levels,3,L,L) for the AR(2) model.
+    R_c,mu,sigma = _stack_cascades(R_d, num_cascade_levels)
     
     # Compute lag-1 and lag-2 temporal autocorrelation coefficients for each 
     # cascade level.
@@ -132,7 +117,7 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr,
         R_c_ = np.stack([R_c[i, j, :, :] for j in xrange(3)])
         GAMMA[i, :] = correlation.temporal_autocorrelation(R_c_, MASK=MASK)
     
-    print(GAMMA)
+    _print_corrcoefs(GAMMA)
     
     # Adjust the correlation coefficients to ensure that the AR(2) process 
     # is stationary.
@@ -145,7 +130,7 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr,
     for i in xrange(num_cascade_levels):
         PHI[i, :] = autoregression.estimate_ar_params_yw(GAMMA[i, :])
     
-    print(PHI)
+    _print_ar2_params(PHI)
     
     # Discard the first of the three cascades because it is not needed for the 
     # AR(2) model.
@@ -153,8 +138,8 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr,
     
     D = None
     R_f = []
-    MASK_p = (R[-1, :, :] >= R_thr).astype(float) # precipitation mask
-    R_min = np.min(R)
+    #MASK_p = (R[-1, :, :] >= R_thr).astype(float) # precipitation mask
+    #R_min = np.min(R)
     
     for t in xrange(num_timesteps):
         # Iterate the AR(2) model for each cascade level.
@@ -218,3 +203,45 @@ def steps(R, V, num_timesteps, extrap_method, num_ens_members,
       member.
     """
     pass
+
+def _print_ar2_params(PHI):
+  print("****************************************")
+  print("* AR(2) parameters for cascade levels: *")
+  print("****************************************")
+  print("------------------------------------------------------")
+  print("| Level |       0      |       1      |       2      |")
+  print("------------------------------------------------------")
+  for k in range(PHI.shape[0]):
+    print("| %-5d | %-13.6f | %-13.6f | %-13.6f |" % \
+          (k+1, PHI[k, 0], PHI[k, 1], PHI[k, 2]))
+    print("------------------------------------------------------")
+
+def _print_corrcoefs(GAMMA):
+  print("************************************************")
+  print("* Correlation coefficients for cascade levels: *")
+  print("************************************************")
+  print("-----------------------------------------")
+  print("| Level |     Lag-1     |      Lag-2    |")
+  print("-----------------------------------------")
+  for k in range(GAMMA.shape[0]):
+      print("| %-5d | %-13.6f | %-13.6f |" % (k+1, GAMMA[k, 0], GAMMA[k, 1]))
+      print("-----------------------------------------")
+
+def _stack_cascades(R_d, num_levels):
+  R_c   = []
+  mu    = np.empty(num_levels)
+  sigma = np.empty(num_levels)
+  
+  for i in xrange(num_levels):
+      R_ = []
+      for j in xrange(3):
+          mu_    = R_d[j]["means"][i]
+          sigma_ = R_d[j]["stds"][i]
+          if j == 2:
+              mu[i]    = mu_
+              sigma[i] = sigma_
+          R__ = (R_d[j]["cascade_levels"][i, :, :] - mu_) / sigma_
+          R_.append(R__)
+      R_c.append(np.stack(R_))
+  
+  return np.stack(R_c),mu,sigma
