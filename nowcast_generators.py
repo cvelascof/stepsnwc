@@ -39,11 +39,9 @@ def simple_advection(R, V, num_timesteps, extrap_method, extrap_args={}):
     
     return extrap_method(R, V, num_timesteps)
 
-# TODO: Write the documentation.
-def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr, 
-    conditional=True, bandpass_filter_method=bandpass_filters.filter_gaussian, 
-    decomp_method=decomposition.decomposition_fft, 
-    extrap_kwargs=None, filter_kwargs=None, decomposition_kwargs=None):
+def s_prog(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method, 
+           decomp_method, bandpass_filter_method, conditional=True, 
+           extrap_kwargs={}, filter_kwargs={}):
     """Generate a nowcast by using the S-PROG method (Seed, 2003).
     
     Parameters
@@ -51,26 +49,37 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr,
     R : array-like
       Three-dimensional array of shape (3,m,n) containing three input 
       precipitation fields ordered by timestamp from oldest to newest. The time 
-      steps between the inputs are assumed to be regular.
+      steps between the inputs are assumed to be regular, and the inputs are 
+      required to have finite values.
     V : array-like
       Array of shape (2,m,n) containing the x- and y-components of the advection 
       field. The velocities are assumed to represent one time step between the 
       inputs.
     num_timesteps : int
       Number of time steps to forecast.
+    num_cascade_levels : int
+      The number of cascade levels to use.
+    R_thr : float
+      Specifies the threshold value to use if conditional is True.
     extrap_method : str
       Name of the extrapolation method to use. See the documentation of the 
       advection module for the available choices.
-    extrap_args : dict
-      Optional dictionary that is supplied as keyword arguments to the 
-      extrapolation method.
+    decomp_method : str
+      Name of the cascade decomposition method to use, see the documentation 
+      of the cascade.decomposition module.
+    bandpass_filter_method : str
+      Name of the bandpass filter method to use with the cascade decomposition, 
+      see the documentation of the cascade.bandpass_filters module.
     conditional : bool
       If set to True, compute the correlation coefficients conditionally by 
       excluding the areas where the values are below the given threshold. This 
-      requires cond_thr to be set.
-    cond_thr : float
-      Threshold value for conditional computation of correlation coefficients, 
-      see above.
+      requires R_thr to be set.
+    extrap_kwargs : dict
+      Optional dictionary that is supplied as keyword arguments to the 
+      extrapolation method.
+    filter_kwargs : dict
+      Optional dictionary that is supplied as keyword arguments to the 
+      filter method.
     
     Returns
     -------
@@ -79,9 +88,6 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr,
       series of nowcast precipitation fields.
     """
     _check_inputs(R, V, 2)
-    
-    # TODO: This method does not use all input parameters. Remove hard-coded 
-    # values.
     
     if np.any(~np.isfinite(R)):
         raise ValueError("R contains non-finite values")
@@ -92,8 +98,8 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr,
     
     # Advect the previous precipitation fields to the same position with the 
     # most recent one (i.e. transform them into the Lagrangian coordinates).
-    R[0, :, :] = extrap_method(R[0, :, :], V, 2, outval="min")[1]
-    R[1, :, :] = extrap_method(R[1, :, :], V, 1, outval="min")[0]
+    R[0, :, :] = extrap_method(R[0, :, :], V, 2, outval="min", **extrap_kwargs)[1]
+    R[1, :, :] = extrap_method(R[1, :, :], V, 1, outval="min", **extrap_kwargs)[0]
     
     if conditional:
         MASK = np.logical_and.reduce([R[i, :, :] >= R_thr for i in xrange(R.shape[0])])
@@ -101,12 +107,14 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr,
         MASK = None
     
     # Initialize the band-pass filter.
-    filter = bandpass_filters.filter_gaussian(L, num_cascade_levels)
+    filter_method = bandpass_filters.get_method(bandpass_filter_method)
+    filter = filter_method(L, num_cascade_levels, **filter_kwargs)
     
     # Compute the cascade decompositions of the input precipitation fields.
+    decomp_method = decomposition.get_method(decomp_method)
     R_d = []
     for i in xrange(3):
-        R_ = decomposition.decomposition_fft(R[i, :, :], filter, MASK=MASK)
+        R_ = decomp_method(R[i, :, :], filter, MASK=MASK)
         R_d.append(R_)
     
     # Normalize the cascades and rearrange them into a four-dimensional array 
@@ -141,6 +149,7 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr,
     
     D = None
     R_f = []
+    
     #MASK_p = (R[-1, :, :] >= R_thr).astype(float) # precipitation mask
     #R_min = np.min(R)
     
