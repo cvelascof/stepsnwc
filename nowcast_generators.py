@@ -72,8 +72,7 @@ def s_prog(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
       see the documentation of the cascade.bandpass_filters module.
     conditional : bool
       If set to True, compute the correlation coefficients conditionally by 
-      excluding the areas where the values are below the given threshold. This 
-      requires R_thr to be set.
+      excluding the areas where the values are below the threshold R_thr.
     extrap_kwargs : dict
       Optional dictionary that is supplied as keyword arguments to the 
       extrapolation method.
