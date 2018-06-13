@@ -33,9 +33,11 @@ def simple_advection(R, V, num_timesteps, extrap_method, extrap_args={}):
       Three-dimensional array of shape (num_timesteps,m,n) containing a time 
       series of nowcast precipitation fields.
     """
+    _check_inputs(R, V, 1)
+    
     extrap_method = advection.get_method(extrap_method)
     
-    return extrap_method(R[-1, :, :], V, num_timesteps)
+    return extrap_method(R, V, num_timesteps)
 
 # TODO: Write the documentation.
 def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr, 
@@ -76,7 +78,8 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr,
       Three-dimensional array of shape (num_timesteps,m,n) containing a time 
       series of nowcast precipitation fields.
     """
-    # TODO: Add checking of the inputs.
+    _check_inputs(R, V, 2)
+    
     # TODO: This method does not use all input parameters. Remove hard-coded 
     # values.
     
@@ -119,7 +122,7 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr,
     
     _print_corrcoefs(GAMMA)
     
-    # Adjust the correlation coefficients to ensure that the AR(2) process 
+    # Adjust the lag-2 correlation coefficient to ensure that the AR(2) process 
     # is stationary.
     for i in xrange(num_cascade_levels):
         GAMMA[i, 1] = autoregression.adjust_lag2_corrcoef(GAMMA[i, 0], GAMMA[i, 1])
@@ -130,7 +133,7 @@ def s_prog(R, V, num_timesteps, extrap_method, num_cascade_levels, R_thr,
     for i in xrange(num_cascade_levels):
         PHI[i, :] = autoregression.estimate_ar_params_yw(GAMMA[i, :])
     
-    _print_ar2_params(PHI)
+    _print_ar2_params(PHI, False)
     
     # Discard the first of the three cascades because it is not needed for the 
     # AR(2) model.
@@ -204,17 +207,43 @@ def steps(R, V, num_timesteps, extrap_method, num_ens_members,
     """
     pass
 
-def _print_ar2_params(PHI):
-  print("****************************************")
-  print("* AR(2) parameters for cascade levels: *")
-  print("****************************************")
-  print("------------------------------------------------------")
-  print("| Level |       0      |       1      |       2      |")
-  print("------------------------------------------------------")
-  for k in range(PHI.shape[0]):
-    print("| %-5d | %-13.6f | %-13.6f | %-13.6f |" % \
-          (k+1, PHI[k, 0], PHI[k, 1], PHI[k, 2]))
+def _check_inputs(R, V, method):
+  if method == 1:
+    if len(R.shape) != 2:
+      raise ValueError("R must be a two-dimensional array")
+  else:
+    if len(R.shape) != 3:
+      raise ValueError("R must be a three-dimensional array")
+    if R.shape[1] != R.shape[2]:
+      raise ValueError("the dimensions of the input fields are %dx%d, but square shape expected" % \
+                         (R.shape[1], R.shape[2]))
+  
+  if len(V.shape) != 3:
+    raise ValueError("V must be a three-dimensional array")
+
+def _print_ar2_params(PHI, include_perturb_term):
+  if include_perturb_term:
+    print("****************************************")
+    print("* AR(2) parameters for cascade levels: *")
+    print("****************************************")
     print("------------------------------------------------------")
+    print("| Level |       0      |       1      |       2      |")
+    print("------------------------------------------------------")
+    for k in range(PHI.shape[0]):
+      print("| %-5d | %-13.6f | %-13.6f | %-13.6f |" % \
+            (k+1, PHI[k, 0], PHI[k, 1], PHI[k, 2]))
+      print("------------------------------------------------------")
+  else:
+    print("****************************************")
+    print("* AR(2) parameters for cascade levels: *")
+    print("****************************************")
+    print("---------------------------------------")
+    print("| Level |       1      |       2      |")
+    print("---------------------------------------")
+    for k in range(PHI.shape[0]):
+      print("| %-5d | %-13.6f | %-13.6f |" % \
+            (k+1, PHI[k, 0], PHI[k, 1]))
+      print("------------------------------------------------------")
 
 def _print_corrcoefs(GAMMA):
   print("************************************************")
