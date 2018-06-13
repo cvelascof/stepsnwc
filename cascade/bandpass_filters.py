@@ -25,6 +25,22 @@ wavenumber they sum to one.
 
 import numpy as np
 
+def get_method(name):
+  """Return a callable function for the filter method corresponding to the 
+  given name. The available options are:\n\
+  
+  +-------------------+--------------------------------------------------------+
+  |     Name          |              Description                               |
+  +===================+========================================================+
+  |  gaussian         | implementation of a bandpass filter using Gaussian     |
+  |                   | weights                                                |
+  +-------------------+--------------------------------------------------------+
+  """
+  if name == "gaussian":
+    return filter_gaussian
+  else:
+    raise ValueError("unknown method %s, the only currently implemented method is 'gaussian'" % name)
+
 # TODO: Should the filter always return an 1d array and should we use a separate 
 # method for generating the 2d filter from the 1d filter?
 
