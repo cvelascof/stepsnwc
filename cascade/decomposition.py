@@ -24,6 +24,22 @@ try:
 except ImportError:
     from numpy import fft
 
+def get_method(name):
+    """Return a callable function for the decomposition method corresponding to 
+    the given name. The available options are:\n\
+    
+    +-------------------+--------------------------------------------------------+
+    |     Name          |              Description                               |
+    +===================+========================================================+
+    |  fft              | decomposition based on Fast Fourier Transform (FFT)    |
+    |                   | and a bandpass filter                                  |
+    +-------------------+--------------------------------------------------------+
+    """
+    if name == "fft":
+        return decomposition_fft
+    else:
+        raise ValueError("unknown method %s, the only currently implemented method is 'fft'" % name)
+
 def decomposition_fft(X, filter, MASK=None):
     """Decompose a 2d input field into multiple spatial scales by using the Fast 
     Fourier Transform (FFT) and a bandpass filter.
