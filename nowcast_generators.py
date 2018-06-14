@@ -94,11 +94,12 @@ def s_prog(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
                   conditional=conditional, extrap_kwargs=extrap_kwargs, 
                   filter_kwargs=filter_kwargs)
 
+# TODO: Add options for choosing the perturbation methods.
 def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr, 
           extrap_method, decomp_method, bandpass_filter_method, 
           pixelsperkm, timestep, vp_par=(10.88,0.23,-7.68), 
-          vp_perp=(5.76,0.31,-2.72), conditional=True, extrap_kwargs={}, 
-          filter_kwargs={}):
+          vp_perp=(5.76,0.31,-2.72), conditional=True, precip_mask=False, 
+          extrap_kwargs={}, filter_kwargs={}):
     """Generate a nowcast ensemble by using the STEPS method described in 
     Bowler et al. 2006: STEPS: A probabilistic precipitation forecasting scheme 
     which merges an extrapolation nowcast with downscaled NWP.
@@ -148,6 +149,9 @@ def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr,
     conditional : bool
       If set to True, compute the correlation coefficients conditionally by 
       excluding the areas where the values are below the threshold R_thr.
+    precip_mask : bool
+      If True, set pixels outside precipitation areas to the minimum value of 
+      the observed field.
     extrap_kwargs : dict
       Optional dictionary that is supplied as keyword arguments to the 
       extrapolation method.
@@ -167,7 +171,7 @@ def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr,
                   num_ens_members=num_ens_members, conditional=conditional, 
                   extrap_kwargs=extrap_kwargs, filter_kwargs=filter_kwargs, 
                   pixelsperkm=pixelsperkm, timestep=timestep, vp_par=vp_par, 
-                  vp_perp=vp_perp)
+                  vp_perp=vp_perp, precip_mask=precip_mask)
 
 def _check_inputs(R, V, method):
   if method == 1:
@@ -189,10 +193,10 @@ def _print_ar2_params(PHI, include_perturb_term):
         print("* AR(2) parameters for cascade levels: *")
         print("****************************************")
         print("------------------------------------------------------")
-        print("| Level |       1      |      2       |       0      |")
+        print("| Level |      1       |      2       |       0      |")
         print("------------------------------------------------------")
         for k in range(PHI.shape[0]):
-            print("| %-5d | %-13.6f | %-13.6f | %-13.6f |" % \
+            print("| %-5d | %-12.6f | %-12.6f | %-12.6f |" % \
                   (k+1, PHI[k, 0], PHI[k, 1], PHI[k, 2]))
             print("------------------------------------------------------")
     else:
@@ -203,8 +207,7 @@ def _print_ar2_params(PHI, include_perturb_term):
         print("| Level |       1      |       2      |")
         print("---------------------------------------")
         for k in range(PHI.shape[0]):
-            print("| %-5d | %-13.6f | %-13.6f |" % \
-                  (k+1, PHI[k, 0], PHI[k, 1]))
+            print("| %-5d | %-13.6f | %-13.6f |" % (k+1, PHI[k, 0], PHI[k, 1]))
             print("------------------------------------------------------")
 
 def _print_corrcoefs(GAMMA):
@@ -212,7 +215,7 @@ def _print_corrcoefs(GAMMA):
     print("* Correlation coefficients for cascade levels: *")
     print("************************************************")
     print("-----------------------------------------")
-    print("| Level |     Lag-1     |      Lag-2    |")
+    print("| Level |     Lag-1     |     Lag-2     |")
     print("-----------------------------------------")
     for k in range(GAMMA.shape[0]):
         print("| %-5d | %-13.6f | %-13.6f |" % (k+1, GAMMA[k, 0], GAMMA[k, 1]))
@@ -241,7 +244,7 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
            decomp_method, bandpass_filter_method, add_perturbations, 
            num_ens_members=1, conditional=True, extrap_kwargs={}, 
            filter_kwargs={}, pixelsperkm=None, timestep=None, vp_par=None, 
-           vp_perp=None):
+           vp_perp=None, precip_mask=False):
     _check_inputs(R, V, 2)
     
     if np.any(~np.isfinite(R)):
@@ -319,8 +322,10 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
     D = [None for j in xrange(num_ens_members)]
     R_f = [[] for j in xrange(num_ens_members)]
     
-    #MASK_p = (R[-1, :, :] >= R_thr).astype(float) # precipitation mask
-    #R_min = np.min(R)
+    if precip_mask:
+      # Compute precipitation mask.
+      MASK_p = (R[-1, :, :] >= R_thr).astype(float)
+      R_min = np.min(R)
     
     for t in xrange(num_timesteps):
         # Iterate the AR(2) model for each cascade level.
@@ -348,10 +353,11 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
             D[j] = D_
             R_f_ = R_f_[0]
             
-            # Advect the precipitation mask and apply it to the output.
-            # TODO: Make the precipitation mask optional.
-            #MASK_p_ = advection.semilagrangian(MASK_p, V, 1, D_prev=D)
-            #R_f_[MASK_p < 0.5] = R_min
+            
+            if precip_mask:
+              # Advect the precipitation mask and apply it to the output.
+              MASK_p_ = advection.semilagrangian(MASK_p, V, 1, D_prev=D[j])[0]
+              R_f_[MASK_p_ < 0.5] = R_min
             
             R_f[j].append(R_f_)
     
