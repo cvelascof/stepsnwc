@@ -1,5 +1,7 @@
 """Implementations of nowcasting methods."""
 
+# TODO: Divide this module into two parts: deterministic and stochastic methods.
+
 import numpy as np
 from timeseries import autoregression
 from cascade import bandpass_filters, decomposition
@@ -217,52 +219,52 @@ def steps(R, V, num_timesteps, extrap_method, num_ens_members,
 
 def _check_inputs(R, V, method):
   if method == 1:
-    if len(R.shape) != 2:
-      raise ValueError("R must be a two-dimensional array")
+      if len(R.shape) != 2:
+        raise ValueError("R must be a two-dimensional array")
   else:
-    if len(R.shape) != 3:
-      raise ValueError("R must be a three-dimensional array")
-    if R.shape[1] != R.shape[2]:
-      raise ValueError("the dimensions of the input fields are %dx%d, but square shape expected" % \
-                         (R.shape[1], R.shape[2]))
+      if len(R.shape) != 3:
+          raise ValueError("R must be a three-dimensional array")
+      if R.shape[1] != R.shape[2]:
+          raise ValueError("the dimensions of the input fields are %dx%d, but square shape expected" % \
+                           (R.shape[1], R.shape[2]))
   
   if len(V.shape) != 3:
     raise ValueError("V must be a three-dimensional array")
 
 def _print_ar2_params(PHI, include_perturb_term):
-  if include_perturb_term:
-    print("****************************************")
-    print("* AR(2) parameters for cascade levels: *")
-    print("****************************************")
-    print("------------------------------------------------------")
-    print("| Level |       0      |       1      |       2      |")
-    print("------------------------------------------------------")
-    for k in range(PHI.shape[0]):
-      print("| %-5d | %-13.6f | %-13.6f | %-13.6f |" % \
-            (k+1, PHI[k, 0], PHI[k, 1], PHI[k, 2]))
-      print("------------------------------------------------------")
-  else:
-    print("****************************************")
-    print("* AR(2) parameters for cascade levels: *")
-    print("****************************************")
-    print("---------------------------------------")
-    print("| Level |       1      |       2      |")
-    print("---------------------------------------")
-    for k in range(PHI.shape[0]):
-      print("| %-5d | %-13.6f | %-13.6f |" % \
-            (k+1, PHI[k, 0], PHI[k, 1]))
-      print("------------------------------------------------------")
+    if include_perturb_term:
+        print("****************************************")
+        print("* AR(2) parameters for cascade levels: *")
+        print("****************************************")
+        print("------------------------------------------------------")
+        print("| Level |       0      |       1      |       2      |")
+        print("------------------------------------------------------")
+        for k in range(PHI.shape[0]):
+            print("| %-5d | %-13.6f | %-13.6f | %-13.6f |" % \
+                  (k+1, PHI[k, 0], PHI[k, 1], PHI[k, 2]))
+            print("------------------------------------------------------")
+    else:
+        print("****************************************")
+        print("* AR(2) parameters for cascade levels: *")
+        print("****************************************")
+        print("---------------------------------------")
+        print("| Level |       1      |       2      |")
+        print("---------------------------------------")
+        for k in range(PHI.shape[0]):
+            print("| %-5d | %-13.6f | %-13.6f |" % \
+                  (k+1, PHI[k, 0], PHI[k, 1]))
+            print("------------------------------------------------------")
 
 def _print_corrcoefs(GAMMA):
-  print("************************************************")
-  print("* Correlation coefficients for cascade levels: *")
-  print("************************************************")
-  print("-----------------------------------------")
-  print("| Level |     Lag-1     |      Lag-2    |")
-  print("-----------------------------------------")
-  for k in range(GAMMA.shape[0]):
-      print("| %-5d | %-13.6f | %-13.6f |" % (k+1, GAMMA[k, 0], GAMMA[k, 1]))
-      print("-----------------------------------------")
+    print("************************************************")
+    print("* Correlation coefficients for cascade levels: *")
+    print("************************************************")
+    print("-----------------------------------------")
+    print("| Level |     Lag-1     |      Lag-2    |")
+    print("-----------------------------------------")
+    for k in range(GAMMA.shape[0]):
+        print("| %-5d | %-13.6f | %-13.6f |" % (k+1, GAMMA[k, 0], GAMMA[k, 1]))
+        print("-----------------------------------------")
 
 def _stack_cascades(R_d, num_levels):
   R_c   = []
@@ -282,3 +284,6 @@ def _stack_cascades(R_d, num_levels):
       R_c.append(np.stack(R_))
   
   return np.stack(R_c),mu,sigma
+
+#def _steps():
+#  pass
