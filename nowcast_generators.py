@@ -5,6 +5,7 @@
 import numpy as np
 from timeseries import autoregression
 from cascade import bandpass_filters, decomposition
+from perturbation import motion_generators
 from timeseries import correlation
 from motion import advection
 
@@ -94,9 +95,13 @@ def s_prog(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
                   filter_kwargs=filter_kwargs)
 
 def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr, 
-          extrap_method, decomp_method, bandpass_filter_method, vp_par, vp_perp, 
-          conditional=True, extrap_kwargs={}, filter_kwargs={}):
-    """Generate a nowcast ensemble by using the STEPS method (Bowler et al., 2006).
+          extrap_method, decomp_method, bandpass_filter_method, 
+          pixelsperkm, timestep, vp_par=(10.88,0.23,-7.68), 
+          vp_perp=(5.76,0.31,-2.72), conditional=True, extrap_kwargs={}, 
+          filter_kwargs={}):
+    """Generate a nowcast ensemble by using the STEPS method described in 
+    Bowler et al. 2006: STEPS: A probabilistic precipitation forecasting scheme 
+    which merges an extrapolation nowcast with downscaled NWP.
     
     Parameters
     ----------
@@ -126,14 +131,20 @@ def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr,
     bandpass_filter_method : str
       Name of the bandpass filter method to use with the cascade decomposition, 
       see the documentation of the cascade.bandpass_filters module.
+    pixelsperkm : float
+      Spatial resolution of the motion field (pixels/kilometer).
+    timestep : float
+      Time step for the motion vectors (minutes).
     vp_par : tuple
-      Three-element tuple containing the parameters for the standard deviation 
-      of the perturbations in the direction parallel to the motion vectors. 
-      See perturbation.motion_generators.initialize_motion_perturbations_bps.
+      Optional three-element tuple containing the parameters for the standard 
+      deviation of the perturbations in the direction parallel to the motion 
+      vectors. See perturbation.motion_generators.initialize_motion_perturbations_bps. 
+      The default values are taken from Bowler et al. 2006.
     vp_perp : tuple
-      Three-element tuple containing the parameters for the standard deviation 
-      of the perturbations in the direction perpendicular to the motion vectors. 
-      See perturbation.motion_generators.initialize_motion_perturbations_bps.
+      Optional three-element tuple containing the parameters for the standard 
+      deviation of the perturbations in the direction perpendicular to the motion 
+      vectors. See perturbation.motion_generators.initialize_motion_perturbations_bps. 
+      The default values are taken from Bowler et al. 2006.
     conditional : bool
       If set to True, compute the correlation coefficients conditionally by 
       excluding the areas where the values are below the threshold R_thr.
@@ -155,7 +166,8 @@ def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr,
                   extrap_method, decomp_method, bandpass_filter_method, True, 
                   num_ens_members=num_ens_members, conditional=conditional, 
                   extrap_kwargs=extrap_kwargs, filter_kwargs=filter_kwargs, 
-                  vp_par=vp_par, vp_perp=vp_perp)
+                  pixelsperkm=pixelsperkm, timestep=timestep, vp_par=vp_par, 
+                  vp_perp=vp_perp)
 
 def _check_inputs(R, V, method):
   if method == 1:
@@ -228,7 +240,8 @@ def _stack_cascades(R_d, num_levels):
 def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method, 
            decomp_method, bandpass_filter_method, add_perturbations, 
            num_ens_members=1, conditional=True, extrap_kwargs={}, 
-           filter_kwargs={}, vp_par=None, vp_perp=None):
+           filter_kwargs={}, pixelsperkm=None, timestep=None, vp_par=None, 
+           vp_perp=None):
     _check_inputs(R, V, 2)
     
     if np.any(~np.isfinite(R)):
@@ -293,6 +306,14 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
     # members.
     R_c = np.stack([R_c.copy() for i in xrange(num_ens_members)])
     
+    if add_perturbations:
+        # Initialize the perturbation generators for the motion field.
+        vps = []
+        for j in xrange(num_ens_members):
+            vp_ = motion_generators.initialize_motion_perturbations_bps(\
+              V, vp_par, vp_perp, pixelsperkm, timestep)
+            vps.append(vp_)
+    
     D = [None for j in xrange(num_ens_members)]
     R_f = [[] for j in xrange(num_ens_members)]
     
@@ -305,6 +326,8 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
               for j in xrange(num_ens_members):
                   R_c[j, i, :, :, :] = \
                     autoregression.iterate_ar_model(R_c[j, i, :, :, :], PHI[i, :])
+                  # TODO: Iterate the AR(2) model for the noise cascade.
+                  # TODO: Iterate the AR(2) acf.
         
         # Compute the recomposed precipitation field from the cascade obtained 
         # from the AR(2) model.
@@ -312,10 +335,10 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
             R_r = [(R_c[j, i, -1, :, :] * sigma[i]) + mu[i] for i in xrange(num_cascade_levels)]
             R_r = np.sum(np.stack(R_r), axis=0)
             
-            # Advect the recomposed precipitation field to obtain the forecast for 
-            # time step t.
+            # Advect the recomposed precipitation field to obtain the forecast 
+            # for time step t.
             if add_perturbations:
-              V_ = V # TODO: Apply the motion perturbator here.
+              V_ = V + motion_generators.generate_motion_perturbations_bps(vps[j], t*timestep)
             else:
               V_ = V
             
