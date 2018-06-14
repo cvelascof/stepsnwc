@@ -5,6 +5,7 @@
 import numpy as np
 from timeseries import autoregression
 from cascade import bandpass_filters, decomposition
+from datatools import probmatching
 from perturbation import motion_generators, precip_generators
 from timeseries import correlation
 from motion import advection
@@ -98,8 +99,8 @@ def s_prog(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
 def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr, 
           extrap_method, decomp_method, bandpass_filter_method, 
           pixelsperkm, timestep, vp_par=(10.88,0.23,-7.68), 
-          vp_perp=(5.76,0.31,-2.72), conditional=True, precip_mask=False, 
-          extrap_kwargs={}, filter_kwargs={}):
+          vp_perp=(5.76,0.31,-2.72), conditional=True, use_precip_mask=False, 
+          use_probmatching=True, extrap_kwargs={}, filter_kwargs={}):
     """Generate a nowcast ensemble by using the STEPS method described in 
     Bowler et al. 2006: STEPS: A probabilistic precipitation forecasting scheme 
     which merges an extrapolation nowcast with downscaled NWP.
@@ -149,9 +150,13 @@ def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr,
     conditional : bool
       If set to True, compute the correlation coefficients conditionally by 
       excluding the areas where the values are below the threshold R_thr.
-    precip_mask : bool
+    use_precip_mask : bool
       If True, set pixels outside precipitation areas to the minimum value of 
       the observed field.
+    use_probmatching : bool
+      If True, apply probability matching to the forecast field in order to 
+      preserve the distribution of the most recently observed precipitation 
+      field.
     extrap_kwargs : dict
       Optional dictionary that is supplied as keyword arguments to the 
       extrapolation method.
@@ -171,7 +176,8 @@ def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr,
                   num_ens_members=num_ens_members, conditional=conditional, 
                   extrap_kwargs=extrap_kwargs, filter_kwargs=filter_kwargs, 
                   pixelsperkm=pixelsperkm, timestep=timestep, vp_par=vp_par, 
-                  vp_perp=vp_perp, precip_mask=precip_mask)
+                  vp_perp=vp_perp, use_precip_mask=use_precip_mask, 
+                  use_probmatching=use_probmatching)
 
 def _check_inputs(R, V, method):
   if method == 1:
@@ -244,7 +250,7 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
            decomp_method, bandpass_filter_method, add_perturbations, 
            num_ens_members=1, conditional=True, extrap_kwargs={}, 
            filter_kwargs={}, pixelsperkm=None, timestep=None, vp_par=None, 
-           vp_perp=None, precip_mask=False):
+           vp_perp=None, use_precip_mask=False, use_probmatching=True):
     _check_inputs(R, V, 2)
     
     if np.any(~np.isfinite(R)):
@@ -310,8 +316,9 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
     R_c = np.stack([R_c.copy() for i in xrange(num_ens_members)])
     
     if add_perturbations:
-        # Initialiye the perturbation generator for the precipitation field.
+        # Initialize the perturbation generator for the precipitation field.
         pp = precip_generators.initialize_nonparam_2d_fft_filter(R[-1, :, :])
+        
         # Initialize the perturbation generators for the motion field.
         vps = []
         for j in xrange(num_ens_members):
@@ -322,10 +329,14 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
     D = [None for j in xrange(num_ens_members)]
     R_f = [[] for j in xrange(num_ens_members)]
     
-    if precip_mask:
-      # Compute precipitation mask.
-      MASK_p = (R[-1, :, :] >= R_thr).astype(float)
-      R_min = np.min(R)
+    if use_precip_mask:
+        # Compute the wet area ratio and precipitation mask.
+        war = 1.0*np.sum(R[-1, :, :] >= R_thr) / (R.shape[1]*R.shape[2])
+        # TODO: The commented code implements a different version of the masking. 
+        # Allow the user to choose the method.
+        # MASK_p = (R[-1, :, :] >= R_thr).astype(float)
+        R_min = np.min(R)
+        R_m = R_c.copy()
     
     for t in xrange(num_timesteps):
         # Iterate the AR(2) model for each cascade level.
@@ -333,7 +344,10 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
               for j in xrange(num_ens_members):
                   EPS = precip_generators.generate_noise_2d_fft_filter(pp)
                   R_c[j, i, :, :, :] = \
-                    autoregression.iterate_ar_model(R_c[j, i, :, :, :], PHI[i, :], EPS)
+                    autoregression.iterate_ar_model(R_c[j, i, :, :, :], PHI[i, :], EPS=EPS)
+                  if use_precip_mask:
+                      R_m[j, i, :, :, :] = \
+                        autoregression.iterate_ar_model(R_m[j, i, :, :], PHI[i, :])
         
         # Compute the recomposed precipitation field from the cascade obtained 
         # from the AR(2) model.
@@ -341,23 +355,39 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
             R_r = [(R_c[j, i, -1, :, :] * sigma[i]) + mu[i] for i in xrange(num_cascade_levels)]
             R_r = np.sum(np.stack(R_r), axis=0)
             
+            if use_precip_mask:
+                R_m_ = [(R_m[j, i, -1, :, :] * sigma[i]) + mu[i] for i in xrange(num_cascade_levels)]
+                R_m_ = np.sum(np.stack(R_m_), axis=0)
+            
             # Advect the recomposed precipitation field to obtain the forecast 
             # for time step t.
             if add_perturbations:
-              V_ = V + motion_generators.generate_motion_perturbations_bps(vps[j], t*timestep)
+                V_ = V + motion_generators.generate_motion_perturbations_bps(vps[j], t*timestep)
             else:
-              V_ = V
+                V_ = V
+            
+            if use_precip_mask:
+                R_s = R_m_.flatten()
+                R_s.sort(kind="quicksort")
+                x = 1.0*np.arange(1, len(R_s)+1)[::-1] / len(R_s)
+                i = np.argmin(abs(x - war))
+                R_mask_thr = R_s[i]
+                
+                MASK_p = R_m_ < R_mask_thr
+                R_r[MASK_p] = R_min
+            
+            if use_probmatching:
+                R_r = probmatching.nonparam_match_empirical_cdf(R_r, R[-1, :, :])
             
             R_f_,D_ = advection.semilagrangian(R_r, V_, 1, D_prev=D[j], 
                                                return_displacement=True)
             D[j] = D_
             R_f_ = R_f_[0]
             
-            
-            if precip_mask:
-              # Advect the precipitation mask and apply it to the output.
-              MASK_p_ = advection.semilagrangian(MASK_p, V, 1, D_prev=D[j])[0]
-              R_f_[MASK_p_ < 0.5] = R_min
+            #if use_precip_mask:
+                # Advect the precipitation mask and apply it to the output.
+                #MASK_p_ = advection.semilagrangian(MASK_p, V, 1, D_prev=D[j])[0]
+                #R_f_[MASK_p_ < 0.5] = R_min
             
             R_f[j].append(R_f_)
     
