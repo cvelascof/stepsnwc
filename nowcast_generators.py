@@ -345,6 +345,8 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
                   EPS = precip_generators.generate_noise_2d_fft_filter(pp)
                   R_c[j, i, :, :, :] = \
                     autoregression.iterate_ar_model(R_c[j, i, :, :, :], PHI[i, :], EPS=EPS)
+                  # Use a separate AR(2) model for the non-perturbed forecast, 
+                  # from which the mask is obtained.
                   if use_precip_mask:
                       R_m[j, i, :, :, :] = \
                         autoregression.iterate_ar_model(R_m[j, i, :, :], PHI[i, :])
@@ -359,14 +361,15 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
                 R_m_ = [(R_m[j, i, -1, :, :] * sigma[i]) + mu[i] for i in xrange(num_cascade_levels)]
                 R_m_ = np.sum(np.stack(R_m_), axis=0)
             
-            # Advect the recomposed precipitation field to obtain the forecast 
-            # for time step t.
             if add_perturbations:
                 V_ = V + motion_generators.generate_motion_perturbations_bps(vps[j], t*timestep)
             else:
                 V_ = V
             
             if use_precip_mask:
+                # Compute the threshold value R_mask_thr corresponding to the 
+                # same fraction of precipitation pixels (values above R_min) 
+                # as in the most recently observed precipitation field.
                 R_s = R_m_.flatten()
                 R_s.sort(kind="quicksort")
                 x = 1.0*np.arange(1, len(R_s)+1)[::-1] / len(R_s)
@@ -377,8 +380,12 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
                 R_r[MASK_p] = R_min
             
             if use_probmatching:
+                # Adjust the empirical probability distribution of the forecast 
+                # to match the most recently measured precipitation field.
                 R_r = probmatching.nonparam_match_empirical_cdf(R_r, R[-1, :, :])
             
+            # Advect the recomposed precipitation field to obtain the forecast 
+            # for time step t.
             R_f_,D_ = advection.semilagrangian(R_r, V_, 1, D_prev=D[j], 
                                                return_displacement=True)
             D[j] = D_
