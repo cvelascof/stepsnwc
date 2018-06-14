@@ -5,7 +5,7 @@
 import numpy as np
 from timeseries import autoregression
 from cascade import bandpass_filters, decomposition
-from perturbation import motion_generators
+from perturbation import motion_generators, precip_generators
 from timeseries import correlation
 from motion import advection
 
@@ -184,12 +184,12 @@ def _check_inputs(R, V, method):
     raise ValueError("V must be a three-dimensional array")
 
 def _print_ar2_params(PHI, include_perturb_term):
-    if include_perturb_term:
+    if PHI.shape[1] == 3:
         print("****************************************")
         print("* AR(2) parameters for cascade levels: *")
         print("****************************************")
         print("------------------------------------------------------")
-        print("| Level |       0      |       1      |       2      |")
+        print("| Level |       1      |      2       |       0      |")
         print("------------------------------------------------------")
         for k in range(PHI.shape[0]):
             print("| %-5d | %-13.6f | %-13.6f | %-13.6f |" % \
@@ -292,7 +292,7 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
     
     # Estimate the parameters of the AR(2) model from the autocorrelation 
     # coefficients.
-    PHI = np.empty((num_cascade_levels, 2))
+    PHI = np.empty((num_cascade_levels, 3))
     for i in xrange(num_cascade_levels):
         PHI[i, :] = autoregression.estimate_ar_params_yw(GAMMA[i, :])
     
@@ -307,6 +307,8 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
     R_c = np.stack([R_c.copy() for i in xrange(num_ens_members)])
     
     if add_perturbations:
+        # Initialiye the perturbation generator for the precipitation field.
+        pp = precip_generators.initialize_nonparam_2d_fft_filter(R[-1, :, :])
         # Initialize the perturbation generators for the motion field.
         vps = []
         for j in xrange(num_ens_members):
@@ -324,10 +326,9 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
         # Iterate the AR(2) model for each cascade level.
         for i in xrange(num_cascade_levels):
               for j in xrange(num_ens_members):
+                  EPS = precip_generators.generate_noise_2d_fft_filter(pp)
                   R_c[j, i, :, :, :] = \
-                    autoregression.iterate_ar_model(R_c[j, i, :, :, :], PHI[i, :])
-                  # TODO: Iterate the AR(2) model for the noise cascade.
-                  # TODO: Iterate the AR(2) acf.
+                    autoregression.iterate_ar_model(R_c[j, i, :, :, :], PHI[i, :], EPS)
         
         # Compute the recomposed precipitation field from the cascade obtained 
         # from the AR(2) model.
