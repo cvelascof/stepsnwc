@@ -151,7 +151,7 @@ def _gaussweights_1d(l, n, l_0=3, gauss_scale=0.2, gauss_scale_0=0.3):
   for i,ri in enumerate(r):
     rc = log_e(ri[0])
     weight_funcs.append(gaussfunc(rc, s))
-    central_freqs.append(rc)
+    central_freqs.append(ri[0])
   
   gf = gaussfunc(log_e(l/2), s)
   def g(x):
@@ -162,6 +162,6 @@ def _gaussweights_1d(l, n, l_0=3, gauss_scale=0.2, gauss_scale_0=0.3):
     return res
   
   weight_funcs.append(g)
-  central_freqs.append(log_e(l/2))
+  central_freqs.append(l/2)
   
   return weight_funcs, central_freqs
