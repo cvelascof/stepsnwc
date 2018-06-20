@@ -189,8 +189,8 @@ def _check_inputs(R, V, method, ar_order):
   else:
       if len(R.shape) != 3:
           raise ValueError("R must be a three-dimensional array")
-      if R.shape[0] != ar_order + 1:
-          raise ValueError("R.shape[0] != ar_order+1")
+      if R.shape[0] < ar_order + 1:
+          raise ValueError("R.shape[0] < ar_order+1")
       if R.shape[1] != R.shape[2]:
           raise ValueError("the dimensions of the input fields are %dx%d, but square shape expected" % \
                            (R.shape[1], R.shape[2]))
@@ -284,7 +284,7 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
     
     L = R.shape[1]
     extrap_method = advection.get_method(extrap_method)
-    R = R.copy()
+    R = R[-(ar_order + 1):, :, :].copy()
     
     # Advect the previous precipitation fields to the same position with the 
     # most recent one (i.e. transform them into the Lagrangian coordinates).
