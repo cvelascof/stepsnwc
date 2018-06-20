@@ -92,13 +92,12 @@ def s_prog(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
       series of nowcast precipitation fields.
     """
     return _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method, 
-                  decomp_method, bandpass_filter_method, False, ar_order=ar_order, 
-                  conditional=conditional, extrap_kwargs=extrap_kwargs, 
-                  filter_kwargs=filter_kwargs)
+                  decomp_method, bandpass_filter_method, None, 
+                  ar_order=ar_order, conditional=conditional, extrap_kwargs=extrap_kwargs, filter_kwargs=filter_kwargs)
 
 # TODO: Add options for choosing the perturbation methods.
 def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr, 
-          extrap_method, decomp_method, bandpass_filter_method, 
+          extrap_method, decomp_method, bandpass_filter_method, perturbation_method,
           pixelsperkm, timestep, ar_order=2, vp_par=(10.88,0.23,-7.68), 
           vp_perp=(5.76,0.31,-2.72), conditional=True, use_precip_mask=False, 
           use_probmatching=True, extrap_kwargs={}, filter_kwargs={}):
@@ -133,6 +132,9 @@ def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr,
     bandpass_filter_method : str
       Name of the bandpass filter method to use with the cascade decomposition, 
       see the documentation of the cascade.bandpass_filters module.
+    perturbation_method : str
+      Name of the noise generator to use for the perturbations of the precipitation
+      field, see the documentation of the perturbation.precip_generators module.
     pixelsperkm : float
       Spatial resolution of the motion field (pixels/kilometer).
     timestep : float
@@ -174,9 +176,7 @@ def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr,
       member.
     """
     return _steps(R, V, num_timesteps, num_cascade_levels, R_thr, 
-                  extrap_method, decomp_method, bandpass_filter_method, True, 
-                  ar_order=ar_order, num_ens_members=num_ens_members, 
-                  conditional=conditional, extrap_kwargs=extrap_kwargs, 
+                  extrap_method, decomp_method, bandpass_filter_method, perturbation_method, ar_order=ar_order, num_ens_members=num_ens_members, conditional=conditional, extrap_kwargs=extrap_kwargs, 
                   filter_kwargs=filter_kwargs, pixelsperkm=pixelsperkm, 
                   timestep=timestep, vp_par=vp_par, vp_perp=vp_perp, 
                   use_precip_mask=use_precip_mask, 
@@ -273,10 +273,9 @@ def _stack_cascades(R_d, num_levels):
   return np.stack(R_c),mu,sigma
 
 def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method, 
-           decomp_method, bandpass_filter_method, add_perturbations, ar_order=2, 
-           num_ens_members=1, conditional=True, extrap_kwargs={}, 
-           filter_kwargs={}, pixelsperkm=None, timestep=None, vp_par=None, 
-           vp_perp=None, use_precip_mask=False, use_probmatching=True):
+           decomp_method, bandpass_filter_method, perturbation_method, 
+           ar_order=2, num_ens_members=1, conditional=True, extrap_kwargs={}, filter_kwargs={}, pixelsperkm=None, timestep=None, 
+           vp_par=None, vp_perp=None, use_precip_mask=False, use_probmatching=True):
     _check_inputs(R, V, 2, ar_order)
     
     if np.any(~np.isfinite(R)):
@@ -341,10 +340,16 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
     # members.
     R_c = np.stack([R_c.copy() for i in xrange(num_ens_members)])
     
-    if add_perturbations:
-        # Initialize the perturbation generator for the precipitation field.
-        pp = precip_generators.initialize_nonparam_2d_fft_filter(R[-1, :, :])
+    if perturbation_method is not None:
+    
+        # Get methods for perturbations
+        init_noise, generate_noise = precip_generators.get_method(perturbation_method)
         
+        # Initialize the perturbation generator for the precipitation field.
+        pp = init_noise(R[-1, :, :])
+        
+    if vp_par is not None:
+    
         # Initialize the perturbation generators for the motion field.
         vps = []
         for j in xrange(num_ens_members):
@@ -368,8 +373,8 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
         # Iterate the AR(p) model for each cascade level.
         for i in xrange(num_cascade_levels):
               for j in xrange(num_ens_members):
-                  if add_perturbations:
-                    EPS = precip_generators.generate_noise_2d_fft_filter(pp)
+                  if perturbation_method is not None:
+                    EPS = generate_noise(pp)
                   else:
                     EPS = None
                   R_c[j, i, :, :, :] = \
@@ -390,7 +395,7 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
                 R_m_ = [(R_m[j, i, -1, :, :] * sigma[i]) + mu[i] for i in xrange(num_cascade_levels)]
                 R_m_ = np.sum(np.stack(R_m_), axis=0)
             
-            if add_perturbations:
+            if vp_par is not None:
                 V_ = V + motion_generators.generate_motion_perturbations_bps(vps[j], t*timestep)
             else:
                 V_ = V
