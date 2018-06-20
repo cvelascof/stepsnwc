@@ -37,7 +37,7 @@ def simple_advection(R, V, num_timesteps, extrap_method, extrap_args={}):
       Three-dimensional array of shape (num_timesteps,m,n) containing a time 
       series of nowcast precipitation fields.
     """
-    _check_inputs(R, V, 1)
+    _check_inputs(R, V, 1, 0)
     
     extrap_method = advection.get_method(extrap_method)
     
@@ -182,13 +182,15 @@ def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr,
                   use_precip_mask=use_precip_mask, 
                   use_probmatching=use_probmatching)
 
-def _check_inputs(R, V, method):
+def _check_inputs(R, V, method, ar_order):
   if method == 1:
       if len(R.shape) != 2:
         raise ValueError("R must be a two-dimensional array")
   else:
       if len(R.shape) != 3:
           raise ValueError("R must be a three-dimensional array")
+      if R.shape[0] != ar_order + 1:
+          raise ValueError("R.shape[0] != ar_order+1")
       if R.shape[1] != R.shape[2]:
           raise ValueError("the dimensions of the input fields are %dx%d, but square shape expected" % \
                            (R.shape[1], R.shape[2]))
@@ -275,7 +277,7 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
            num_ens_members=1, conditional=True, extrap_kwargs={}, 
            filter_kwargs={}, pixelsperkm=None, timestep=None, vp_par=None, 
            vp_perp=None, use_precip_mask=False, use_probmatching=True):
-    _check_inputs(R, V, 2)
+    _check_inputs(R, V, 2, ar_order)
     
     if np.any(~np.isfinite(R)):
         raise ValueError("R contains non-finite values")
