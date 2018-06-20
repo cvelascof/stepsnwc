@@ -44,17 +44,16 @@ def simple_advection(R, V, num_timesteps, extrap_method, extrap_args={}):
     return extrap_method(R, V, num_timesteps)
 
 def s_prog(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method, 
-           decomp_method, bandpass_filter_method, conditional=True, 
+           decomp_method, bandpass_filter_method, ar_order=2, conditional=True, 
            extrap_kwargs={}, filter_kwargs={}):
     """Generate a nowcast by using the S-PROG method (Seed, 2003).
     
     Parameters
     ----------
     R : array-like
-      Three-dimensional array of shape (3,m,n) containing three input 
-      precipitation fields ordered by timestamp from oldest to newest. The time 
-      steps between the inputs are assumed to be regular, and the inputs are 
-      required to have finite values.
+      Array of shape (ar_order+1,m,n) containing the input precipitation fields 
+      ordered by timestamp from oldest to newest. The time steps between the inputs 
+      are assumed to be regular, and the inputs are required to have finite values.
     V : array-like
       Array of shape (2,m,n) containing the x- and y-components of the advection 
       field. The velocities are assumed to represent one time step between the 
@@ -74,6 +73,8 @@ def s_prog(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
     bandpass_filter_method : str
       Name of the bandpass filter method to use with the cascade decomposition, 
       see the documentation of the cascade.bandpass_filters module.
+    ar_order : int
+      The order of the autoregressive model to use.
     conditional : bool
       If set to True, compute the correlation coefficients conditionally by 
       excluding the areas where the values are below the threshold R_thr.
@@ -91,14 +92,14 @@ def s_prog(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
       series of nowcast precipitation fields.
     """
     return _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method, 
-                  decomp_method, bandpass_filter_method, False, 
+                  decomp_method, bandpass_filter_method, False, ar_order=ar_order, 
                   conditional=conditional, extrap_kwargs=extrap_kwargs, 
                   filter_kwargs=filter_kwargs)
 
 # TODO: Add options for choosing the perturbation methods.
 def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr, 
           extrap_method, decomp_method, bandpass_filter_method, 
-          pixelsperkm, timestep, vp_par=(10.88,0.23,-7.68), 
+          pixelsperkm, timestep, ar_order=2, vp_par=(10.88,0.23,-7.68), 
           vp_perp=(5.76,0.31,-2.72), conditional=True, use_precip_mask=False, 
           use_probmatching=True, extrap_kwargs={}, filter_kwargs={}):
     """Generate a nowcast ensemble by using the STEPS method described in 
@@ -108,10 +109,9 @@ def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr,
     Parameters
     ----------
     R : array-like
-      Three-dimensional array of shape (3,m,n) containing three input 
-      precipitation fields ordered by timestamp from oldest to newest. The time 
-      steps between the inputs are assumed to be regular, and the inputs are 
-      required to have finite values.
+      Array of shape (ar_order+1,m,n) containing the input precipitation fields 
+      ordered by timestamp from oldest to newest. The time steps between the inputs 
+      are assumed to be regular, and the inputs are required to have finite values.
     V : array-like
       Array of shape (2,m,n) containing the x- and y-components of the advection 
       field. The velocities are assumed to represent one time step between the 
@@ -137,6 +137,8 @@ def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr,
       Spatial resolution of the motion field (pixels/kilometer).
     timestep : float
       Time step for the motion vectors (minutes).
+    ar_order : int
+      The order of the autoregressive model to use.
     vp_par : tuple
       Optional three-element tuple containing the parameters for the standard 
       deviation of the perturbations in the direction parallel to the motion 
@@ -173,10 +175,11 @@ def steps(R, V, num_timesteps, num_ens_members, num_cascade_levels, R_thr,
     """
     return _steps(R, V, num_timesteps, num_cascade_levels, R_thr, 
                   extrap_method, decomp_method, bandpass_filter_method, True, 
-                  num_ens_members=num_ens_members, conditional=conditional, 
-                  extrap_kwargs=extrap_kwargs, filter_kwargs=filter_kwargs, 
-                  pixelsperkm=pixelsperkm, timestep=timestep, vp_par=vp_par, 
-                  vp_perp=vp_perp, use_precip_mask=use_precip_mask, 
+                  ar_order=ar_order, num_ens_members=num_ens_members, 
+                  conditional=conditional, extrap_kwargs=extrap_kwargs, 
+                  filter_kwargs=filter_kwargs, pixelsperkm=pixelsperkm, 
+                  timestep=timestep, vp_par=vp_par, vp_perp=vp_perp, 
+                  use_precip_mask=use_precip_mask, 
                   use_probmatching=use_probmatching)
 
 def _check_inputs(R, V, method):
@@ -193,39 +196,60 @@ def _check_inputs(R, V, method):
   if len(V.shape) != 3:
     raise ValueError("V must be a three-dimensional array")
 
-def _print_ar2_params(PHI, include_perturb_term):
-    if PHI.shape[1] == 3:
-        print("****************************************")
-        print("* AR(2) parameters for cascade levels: *")
-        print("****************************************")
-        print("------------------------------------------------------")
-        print("| Level |      1       |      2       |       0      |")
-        print("------------------------------------------------------")
-        for k in range(PHI.shape[0]):
-            print("| %-5d | %-12.6f | %-12.6f | %-12.6f |" % \
-                  (k+1, PHI[k, 0], PHI[k, 1], PHI[k, 2]))
-            print("------------------------------------------------------")
-    else:
-        print("****************************************")
-        print("* AR(2) parameters for cascade levels: *")
-        print("****************************************")
-        print("---------------------------------------")
-        print("| Level |       1      |       2      |")
-        print("---------------------------------------")
-        for k in range(PHI.shape[0]):
-            print("| %-5d | %-13.6f | %-13.6f |" % (k+1, PHI[k, 0], PHI[k, 1]))
-            print("------------------------------------------------------")
+def _print_ar_params(PHI, include_perturb_term):
+    print("****************************************")
+    print("* AR(p) parameters for cascade levels: *")
+    print("****************************************")
+    
+    m = PHI.shape[0]
+    n = PHI.shape[1]
+    
+    hline_str = "---------"
+    for k in xrange(n):
+        hline_str += "---------------"
+    
+    print(hline_str)
+    title_str = "| Level |"
+    for k in xrange(n-1):
+        title_str += "      %d       |" % (k+1)
+    title_str += "      0       |"
+    print(title_str)
+    print(hline_str)
+    
+    fmt_str = "| %-5d |"
+    for k in xrange(n):
+        fmt_str += " %-12.6f |"
+    
+    for k in range(PHI.shape[0]):
+        print(fmt_str % ((k+1,) + tuple(PHI[k, :])))
+        print(hline_str)
 
 def _print_corrcoefs(GAMMA):
     print("************************************************")
     print("* Correlation coefficients for cascade levels: *")
     print("************************************************")
-    print("-----------------------------------------")
-    print("| Level |     Lag-1     |     Lag-2     |")
-    print("-----------------------------------------")
-    for k in range(GAMMA.shape[0]):
-        print("| %-5d | %-13.6f | %-13.6f |" % (k+1, GAMMA[k, 0], GAMMA[k, 1]))
-        print("-----------------------------------------")
+    
+    m = GAMMA.shape[0]
+    n = GAMMA.shape[1]
+    
+    hline_str = "---------"
+    for k in xrange(n):
+        hline_str += "----------------"
+    
+    print(hline_str)
+    title_str = "| Level |"
+    for k in xrange(n):
+        title_str += "     Lag-%d     |" % (k+1)
+    print(title_str)
+    print(hline_str)
+    
+    fmt_str = "| %-5d |"
+    for k in xrange(n):
+        fmt_str += " %-13.6f |"
+    
+    for k in xrange(m):
+        print(fmt_str % ((k+1,) + tuple(GAMMA[k, :])))
+        print(hline_str)
 
 def _stack_cascades(R_d, num_levels):
   R_c   = []
@@ -234,7 +258,7 @@ def _stack_cascades(R_d, num_levels):
   
   for i in xrange(num_levels):
       R_ = []
-      for j in xrange(3):
+      for j in xrange(len(R_d)):
           mu_    = R_d[j]["means"][i]
           sigma_ = R_d[j]["stds"][i]
           if j == 2:
@@ -247,7 +271,7 @@ def _stack_cascades(R_d, num_levels):
   return np.stack(R_c),mu,sigma
 
 def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method, 
-           decomp_method, bandpass_filter_method, add_perturbations, 
+           decomp_method, bandpass_filter_method, add_perturbations, ar_order=2, 
            num_ens_members=1, conditional=True, extrap_kwargs={}, 
            filter_kwargs={}, pixelsperkm=None, timestep=None, vp_par=None, 
            vp_perp=None, use_precip_mask=False, use_probmatching=True):
@@ -262,8 +286,8 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
     
     # Advect the previous precipitation fields to the same position with the 
     # most recent one (i.e. transform them into the Lagrangian coordinates).
-    R[0, :, :] = extrap_method(R[0, :, :], V, 2, outval="min", **extrap_kwargs)[1]
-    R[1, :, :] = extrap_method(R[1, :, :], V, 1, outval="min", **extrap_kwargs)[0]
+    for i in xrange(ar_order):
+        R[i, :, :] = extrap_method(R[i, :, :], V, ar_order-i, outval="min", **extrap_kwargs)[-1]
     
     if conditional:
         MASK = np.logical_and.reduce([R[i, :, :] >= R_thr for i in xrange(R.shape[0])])
@@ -277,38 +301,38 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
     # Compute the cascade decompositions of the input precipitation fields.
     decomp_method = decomposition.get_method(decomp_method)
     R_d = []
-    for i in xrange(3):
+    for i in xrange(ar_order+1):
         R_ = decomp_method(R[i, :, :], filter, MASK=MASK)
         R_d.append(R_)
     
     # Normalize the cascades and rearrange them into a four-dimensional array 
-    # of shape (num_cascade_levels,3,L,L) for the AR(2) model.
+    # of shape (num_cascade_levels,ar_order+1,L,L) for the autoregressive model.
     R_c,mu,sigma = _stack_cascades(R_d, num_cascade_levels)
     
-    # Compute lag-1 and lag-2 temporal autocorrelation coefficients for each 
-    # cascade level.
-    GAMMA = np.empty((num_cascade_levels, 2))
+    # Compute lag-l temporal autocorrelation coefficients for each cascade level.
+    GAMMA = np.empty((num_cascade_levels, ar_order))
     for i in xrange(num_cascade_levels):
-        R_c_ = np.stack([R_c[i, j, :, :] for j in xrange(3)])
+        R_c_ = np.stack([R_c[i, j, :, :] for j in xrange(ar_order+1)])
         GAMMA[i, :] = correlation.temporal_autocorrelation(R_c_, MASK=MASK)
     
     _print_corrcoefs(GAMMA)
     
-    # Adjust the lag-2 correlation coefficient to ensure that the AR(2) process 
-    # is stationary.
-    for i in xrange(num_cascade_levels):
-        GAMMA[i, 1] = autoregression.adjust_lag2_corrcoef(GAMMA[i, 0], GAMMA[i, 1])
+    if ar_order == 2:
+        # Adjust the lag-2 correlation coefficient to ensure that the AR(p) 
+        # process is stationary.
+        for i in xrange(num_cascade_levels):
+            GAMMA[i, 1] = autoregression.adjust_lag2_corrcoef(GAMMA[i, 0], GAMMA[i, 1])
     
-    # Estimate the parameters of the AR(2) model from the autocorrelation 
+    # Estimate the parameters of the AR(p) model from the autocorrelation 
     # coefficients.
-    PHI = np.empty((num_cascade_levels, 3))
+    PHI = np.empty((num_cascade_levels, ar_order+1))
     for i in xrange(num_cascade_levels):
         PHI[i, :] = autoregression.estimate_ar_params_yw(GAMMA[i, :])
     
-    _print_ar2_params(PHI, False)
+    _print_ar_params(PHI, False)
     
-    # Discard the first of the three cascades because it is not needed for the 
-    # AR(2) model.
+    # Discard all except the two last cascades because they are not needed for 
+    # the AR(p) model.
     R_c = R_c[:, 1:, :, :]
     
     # Stack the cascades into a five-dimensional array containing all ensemble 
@@ -339,20 +363,20 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
         R_m = R_c.copy()
     
     for t in xrange(num_timesteps):
-        # Iterate the AR(2) model for each cascade level.
+        # Iterate the AR(p) model for each cascade level.
         for i in xrange(num_cascade_levels):
               for j in xrange(num_ens_members):
                   EPS = precip_generators.generate_noise_2d_fft_filter(pp)
                   R_c[j, i, :, :, :] = \
                     autoregression.iterate_ar_model(R_c[j, i, :, :, :], PHI[i, :], EPS=EPS)
-                  # Use a separate AR(2) model for the non-perturbed forecast, 
+                  # Use a separate AR(p) model for the non-perturbed forecast, 
                   # from which the mask is obtained.
                   if use_precip_mask:
                       R_m[j, i, :, :, :] = \
                         autoregression.iterate_ar_model(R_m[j, i, :, :], PHI[i, :])
         
         # Compute the recomposed precipitation field from the cascade obtained 
-        # from the AR(2) model.
+        # from the AR(p) model.
         for j in xrange(num_ens_members):
             R_r = [(R_c[j, i, -1, :, :] * sigma[i]) + mu[i] for i in xrange(num_cascade_levels)]
             R_r = np.sum(np.stack(R_r), axis=0)
