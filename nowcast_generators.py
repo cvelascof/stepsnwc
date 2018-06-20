@@ -366,7 +366,10 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
         # Iterate the AR(p) model for each cascade level.
         for i in xrange(num_cascade_levels):
               for j in xrange(num_ens_members):
-                  EPS = precip_generators.generate_noise_2d_fft_filter(pp)
+                  if add_perturbations:
+                    EPS = precip_generators.generate_noise_2d_fft_filter(pp)
+                  else:
+                    EPS = None
                   R_c[j, i, :, :, :] = \
                     autoregression.iterate_ar_model(R_c[j, i, :, :, :], PHI[i, :], EPS=EPS)
                   # Use a separate AR(p) model for the non-perturbed forecast, 
