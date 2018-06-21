@@ -44,7 +44,7 @@ def get_method(name):
 # TODO: Should the filter always return an 1d array and should we use a separate 
 # method for generating the 2d filter from the 1d filter?
 
-def filter_gaussian(L, n, l_0=3, gauss_scale=0.2, gauss_scale_0=0.3):
+def filter_gaussian(L, n, l_0=3, gauss_scale=0.5, gauss_scale_0=0.5):
   """Gaussian band-pass filter in logarithmic frequency scale. The method is 
   described in
   
@@ -115,7 +115,7 @@ def compute_2d_weights(w):
   """
   pass
 
-def _gaussweights_1d(l, n, l_0=3, gauss_scale=0.2, gauss_scale_0=0.3):
+def _gaussweights_1d(l, n, l_0=3, gauss_scale=0.5, gauss_scale_0=0.5):
   e = pow(0.5*l/l_0, 1.0/(n-2))
   r = [(l_0*pow(e, k-1), l_0*pow(e, k)) for k in xrange(1, n-1)]
   
@@ -145,8 +145,8 @@ def _gaussweights_1d(l, n, l_0=3, gauss_scale=0.2, gauss_scale_0=0.3):
   weight_funcs  = []
   central_freqs = [0.0]
   
-  s = gauss_scale * e
-  weight_funcs.append(gaussfunc(0.0, gauss_scale_0 * e))
+  s = gauss_scale
+  weight_funcs.append(gaussfunc(0.0, gauss_scale_0))
   
   for i,ri in enumerate(r):
     rc = log_e(ri[0])
