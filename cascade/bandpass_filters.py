@@ -35,9 +35,14 @@ def get_method(name):
   |  gaussian         | implementation of a bandpass filter using Gaussian     |
   |                   | weights                                                |
   +-------------------+--------------------------------------------------------+
+  |  uniform          | implementation of a filter where all weights are set to|
+  |                   | one                                                    |
+  +-------------------+--------------------------------------------------------+
   """
   if name == "gaussian":
     return filter_gaussian
+  elif name == "uniform":
+    return filter_uniform
   else:
     raise ValueError("unknown method %s, the only currently implemented method is 'gaussian'" % name)
 
@@ -76,7 +81,7 @@ def filter_gaussian(L, n, l_0=3, gauss_scale=0.5, gauss_scale_0=0.5):
   L : int
     The width and height of the input field.
   n : int
-    The number of frequency bands to use.
+    The number of frequency bands to use. n must be greater than 2.
   l_0 : int
     Central frequency of the second band (the first band is always centered at 
     zero).
@@ -87,6 +92,10 @@ def filter_gaussian(L, n, l_0=3, gauss_scale=0.5, gauss_scale_0=0.5):
     Optional scaling parameter for the Gaussian function corresponding to the 
     first frequency band.
   """
+  
+  if n < 3:
+    raise ValueError("n must be greater than 2")
+  
   r = np.arange(L/2)
   
   X,Y = np.ogrid[-L/2+1:L/2+1, -L/2+1:L/2+1]
