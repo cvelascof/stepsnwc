@@ -213,8 +213,8 @@ def _print_ar_params(PHI, include_perturb_term):
     print(hline_str)
     title_str = "| Level |"
     for k in xrange(n-1):
-        title_str += "      %d       |" % (k+1)
-    title_str += "      0       |"
+        title_str += "    Phi-%d     |" % (k+1)
+    title_str += "    Phi-0     |"
     print(title_str)
     print(hline_str)
     
