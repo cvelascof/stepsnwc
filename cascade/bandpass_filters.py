@@ -44,6 +44,24 @@ def get_method(name):
 # TODO: Should the filter always return an 1d array and should we use a separate 
 # method for generating the 2d filter from the 1d filter?
 
+def filter_uniform(L, n):
+  """A dummy filter with one frequency band covering the whole domain. The 
+  weights are set to one.
+  
+  Parameters
+  ----------
+  L : int
+    The width and height of the input field.
+  n : int
+    Not used. Needed for compatibility with the filter interface.
+  """
+  result = {}
+  result["weights_1d"]    = np.ones((1, L/2))
+  result["weights_2d"]    = np.ones((1, L, L))
+  result["central_freqs"] = None
+  
+  return result
+
 def filter_gaussian(L, n, l_0=3, gauss_scale=0.5, gauss_scale_0=0.5):
   """Gaussian band-pass filter in logarithmic frequency scale. The method is 
   described in
