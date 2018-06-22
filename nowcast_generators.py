@@ -368,26 +368,38 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
         # MASK_p = (R[-1, :, :] >= R_thr).astype(float)
         R_min = np.min(R)
         R_m = R_c.copy()
-    
+        
+    # Iterate each time step
     for t in xrange(num_timesteps):
-        # Iterate the AR(p) model for each cascade level.
-        for i in xrange(num_cascade_levels):
-              for j in xrange(num_ens_members):
-                  if perturbation_method is not None:
-                    EPS = generate_noise(pp)
-                  else:
-                    EPS = None
-                  R_c[j, i, :, :, :] = \
-                    autoregression.iterate_ar_model(R_c[j, i, :, :, :], PHI[i, :], EPS=EPS)
-                  # Use a separate AR(p) model for the non-perturbed forecast, 
-                  # from which the mask is obtained.
-                  if use_precip_mask:
-                      R_m[j, i, :, :, :] = \
+    
+        # Iterate each ensemble member
+        for j in xrange(num_ens_members):
+        
+            # If perturbations are needed
+            if perturbation_method is not None:
+                # Generate noise field
+                EPS = generate_noise(pp)
+                # Decompose the noise field
+                EPS = decomp_method(EPS, filter)
+            else:
+                EPS = None
+                
+            # Iterate the AR(p) model for each cascade level.
+            for i in xrange(num_cascade_levels):
+            
+                # Normalize the noise cascade
+                EPS_ = (EPS["cascade_levels"][i, :, :] - EPS["means"][i]) / EPS["stds"][i]
+                # Apply AR(p) process to cascade level
+                R_c[j, i, :, :, :] = \
+                    autoregression.iterate_ar_model(R_c[j, i, :, :, :], PHI[i, :], EPS=EPS_)
+                # Use a separate AR(p) model for the non-perturbed forecast, 
+                # from which the mask is obtained.
+                if use_precip_mask:
+                    R_m[j, i, :, :, :] = \
                         autoregression.iterate_ar_model(R_m[j, i, :, :], PHI[i, :])
         
-        # Compute the recomposed precipitation field from the cascade obtained 
-        # from the AR(p) model.
-        for j in xrange(num_ens_members):
+            # Compute the recomposed precipitation field from the cascade obtained 
+            # from the AR(p) model.
             R_r = [(R_c[j, i, -1, :, :] * sigma[i]) + mu[i] for i in xrange(num_cascade_levels)]
             R_r = np.sum(np.stack(R_r), axis=0)
             
