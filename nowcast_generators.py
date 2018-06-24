@@ -388,7 +388,10 @@ def _steps(R, V, num_timesteps, num_cascade_levels, R_thr, extrap_method,
             for i in xrange(num_cascade_levels):
             
                 # Normalize the noise cascade
-                EPS_ = (EPS["cascade_levels"][i, :, :] - EPS["means"][i]) / EPS["stds"][i]
+                if EPS is not None:
+                    EPS_ = (EPS["cascade_levels"][i, :, :] - EPS["means"][i]) / EPS["stds"][i]
+                else:
+                    EPS_ = None
                 # Apply AR(p) process to cascade level
                 R_c[j, i, :, :, :] = \
                     autoregression.iterate_ar_model(R_c[j, i, :, :, :], PHI[i, :], EPS=EPS_)
